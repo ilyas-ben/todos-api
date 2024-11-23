@@ -1,4 +1,7 @@
 import postgres from "https://deno.land/x/postgresjs@v3.4.4/mod.js";
+import * as todoService from "./services/todoService.js";
+import { cacheMethodCalls } from "./util/cacheUtil.js";
+
 
 const portConfig = { port: 7777 };
 
@@ -6,50 +9,30 @@ const sql = postgres({});
 
 const SERVER_ID = crypto.randomUUID();
 
-const handleGetRoot = async (request) => {
-    return new Response(`Hello from ${SERVER_ID}`);
-};
+const cachedTodoService = cacheMethodCalls(todoService, ["addTodo"]);
 
-const handleGetItem = async (request, urlPatternResult) => {
+
+const handleGetTodo = async (urlPatternResult) => {
     const id = urlPatternResult.pathname.groups.id;
-    const todos = await sql`SELECT * FROM todos WHERE id = ${id}`;
-
-    if (todos.length === 0) {
-        return new Response("Not found", { status: 404 });
-    }
-
-    return Response.json(todos[0]);
+    return Response.json(await cachedTodoService.getTodo(id));
 };
 
 
-
-const handleGetItems = async (request) => {
-    const todos = await sql`SELECT * FROM todos`;
-    return Response.json(todos);
+const handleGetTodos = async () => {
+    return Response.json(await cachedTodoService.getTodos());
 };
 
-const handlePostItems = async (request) => {
-    try {
-        const todo = await request.json();
 
-        // Check if the name property is present and not empty
-        if (!todo.item || todo.item.length === 0) {
-            return new Response("Item is required", { status: 400 });
-        }
-
-        await sql`INSERT INTO todos (item) VALUES (${todo.item})`;
-        return new Response("OK", { status: 200 });
-    } catch (error) {
-        // Catch other types of errors (e.g., JSON parsing errors)
-        return new Response("Invalid input", { status: 400 });
-    }
+const handlePostTodos = async (request) => {
+    const todo = await request.json();
+    await cachedTodoService.addTodo(todo.item);
+    return new Response("OK", { status: 200 });
 };
 
-const handleDeleteItem = async (request, urlPatternResult) => {
+
+const handleDeleteTodo = async (urlPatternResult) => {
     const id = urlPatternResult.pathname.groups.id;
     const result = await sql`DELETE FROM todos WHERE id = ${id}`;
-
-    // Check if any rows were deleted
     if (result.count === 0) {
         return new Response("Not found", { status: 404 });
     }
@@ -57,34 +40,27 @@ const handleDeleteItem = async (request, urlPatternResult) => {
     return new Response("Deleted successfully", { status: 200 });
 };
 
-
-
 const urlMapping = [
-    
+
     {
         method: "GET",
         pattern: new URLPattern({ pathname: "/todos" }),
-        fn: handleGetItems,
+        fn: handleGetTodos,
     },
     {
         method: "GET",
         pattern: new URLPattern({ pathname: "/todos/:id" }),
-        fn: handleGetItem,
+        fn: handleGetTodo,
     },
     {
         method: "POST",
         pattern: new URLPattern({ pathname: "/todos" }),
-        fn: handlePostItems,
-    },
-    {
-        method: "GET",
-        pattern: new URLPattern({ pathname: "/" }),
-        fn: handleGetRoot,
+        fn: handlePostTodos,
     },
     {
         method: "DELETE",
         pattern: new URLPattern({ pathname: "/todos/:id" }),
-        fn: handleDeleteItem,  // Added handler for DELETE
+        fn: handleDeleteTodo,
     }
 ];
 
