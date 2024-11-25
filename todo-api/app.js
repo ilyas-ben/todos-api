@@ -1,6 +1,10 @@
 import postgres from "https://deno.land/x/postgresjs@v3.4.4/mod.js";
 import * as todoService from "./services/todoService.js";
 import { cacheMethodCalls } from "./util/cacheUtil.js";
+import { connect } from "./deps.js";
+
+
+
 
 
 const portConfig = { port: 7777 };

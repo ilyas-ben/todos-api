@@ -1,4 +1,9 @@
-const cache = new Map();
+import { connect } from "../deps.js";
+
+const redis = await connect({
+  hostname: "redis",
+  port: 6379,
+});
 
 const cacheMethodCalls = (object, methodsToFlushCacheWith = []) => {
   const handler = {
@@ -6,23 +11,24 @@ const cacheMethodCalls = (object, methodsToFlushCacheWith = []) => {
       const method = module[methodName];
       return async (...methodArgs) => {
         if (methodsToFlushCacheWith.includes(methodName)) {
-          cache.clear();
+          await redis.flushdb()
           return await method.apply(this, methodArgs);
         }
 
         const cacheKey = `${methodName}-${JSON.stringify(methodArgs)}`;
-
-        if (!cache.has(cacheKey)) {
-          cache.set(cacheKey, await method.apply(this, methodArgs));
+        const cacheResult = await redis.get(cacheKey);
+        if (!cacheResult) {
+          const result = await method.apply(this, methodArgs);
+          await redis.set(cacheKey, JSON.stringify(result));
+          return result;
         }
 
-        return cache.get(cacheKey);
+        return JSON.parse(cacheResult);
       };
     },
   };
 
   return new Proxy(object, handler);
 };
-
 
 export { cacheMethodCalls };
